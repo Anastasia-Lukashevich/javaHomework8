@@ -3,7 +3,6 @@ package ru.x5;
 import ru.x5.exceptions.NotEnoughMoneyException;
 import ru.x5.exceptions.UnknownAccountException;
 
-import java.io.*;
 import java.sql.*;
 
 public class JdbcAccountService implements AccountService {
@@ -15,65 +14,81 @@ public class JdbcAccountService implements AccountService {
 
     @Override
     public void withdraw(int accountId, int amount) throws NotEnoughMoneyException, UnknownAccountException {
-        Account account = getAccount(accountId);
-        account.withdraw(amount);
-        saveAccount(account);
-        System.out.println("Указанная сумма списана со счета.");
+        try (Connection connection = getConnection()) {
+            Account account = getAccount(accountId, connection);
+            account.withdraw(amount);
+            saveAccount(account, connection);
+            System.out.println("Указанная сумма списана со счета.");
+        } catch (SQLException exception) {
+            throw new RuntimeException("db fail", exception);
+        }
     }
 
     @Override
     public void balance(int accountId) throws UnknownAccountException {
-        Account account = getAccount(accountId);
-        System.out.println("Сумма на счете " + account.getAmount());
+        try (Connection connection = getConnection()) {
+            Account account = getAccount(accountId, connection);
+            System.out.println("Сумма на счете " + account.getAmount());
+        } catch (SQLException exception) {
+            throw new RuntimeException("db fail", exception);
+        }
     }
 
     @Override
     public void deposit(int accountId, int amount) throws UnknownAccountException {
-        Account account = getAccount(accountId);
-        account.deposit(amount);
-        saveAccount(account);
-        System.out.println("Указанная сумма зачислена на счет.");
+        try (Connection connection = getConnection()) {
+            Account account = getAccount(accountId, connection);
+            account.deposit(amount);
+            saveAccount(account, connection);
+            System.out.println("Указанная сумма зачислена на счет.");
+        } catch (SQLException exception) {
+            throw new RuntimeException("db fail", exception);
+        }
     }
 
     @Override
     public void transfer(int from, int to, int amount) throws NotEnoughMoneyException, UnknownAccountException {
-        Account accountFrom = getAccount(from);
-        Account accountTo = getAccount(to);
-        accountFrom.withdraw(amount);
-        accountTo.deposit(amount);
-        saveAccount(accountFrom);
-        saveAccount(accountTo);
-        System.out.println("Указанная сумма успешно переведена.");
+        try (Connection connection = getConnection()) {
+            try {
+                connection.setAutoCommit(false);
+                Account accountFrom = getAccount(from, connection);
+                Account accountTo = getAccount(to, connection);
+                accountFrom.withdraw(amount);
+                accountTo.deposit(amount);
+                saveAccount(accountFrom, connection);
+                saveAccount(accountTo, connection);
+                System.out.println("Указанная сумма успешно переведена.");
+            } catch (SQLException exception) {
+                connection.rollback();
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException exception) {
+            throw new RuntimeException("db fail", exception);
+        }
     }
 
-    private Account getAccount(int accountId) throws UnknownAccountException {
-        try (Connection connection = getConnection()) {
-            PreparedStatement preparedStatement = connection.prepareStatement("select * from ACCOUNTS where id = ?");
-            preparedStatement.setInt(1, accountId);
-            ResultSet resultSet = preparedStatement.executeQuery();
-            if (!resultSet.next()) {
-                throw new UnknownAccountException();
-            }
-            return new Account(resultSet.getInt("id"),
-                    resultSet.getString("holder"),
-                    resultSet.getInt("amount"));
-
-        } catch (SQLException throwables) {
-            throw new RuntimeException("db fail");
+    private Account getAccount(int accountId, Connection connection) throws UnknownAccountException, SQLException {
+        PreparedStatement preparedStatement = connection.prepareStatement("select * from ACCOUNTS where id = ?");
+        preparedStatement.setInt(1, accountId);
+        ResultSet resultSet = preparedStatement.executeQuery();
+        if (!resultSet.next()) {
+            throw new UnknownAccountException();
         }
+        return new Account(resultSet.getInt("id"),
+                resultSet.getString("holder"),
+                resultSet.getInt("amount"));
     }
 
     private Connection getConnection() throws SQLException {
         return DriverManager.getConnection(connectionUrl);
     }
 
-    private void saveAccount(Account account) {
-        try (PrintWriter writer = new PrintWriter(new FileWriter("accounts/" + account.getId() + ".txt"))) {
-            writer.println(account.getHolder());
-            writer.println(account.getAmount());
-        } catch (IOException e) {
-            throw new RuntimeException("File work error.");
-        }
+    private void saveAccount(Account account, Connection connection) throws SQLException {
+        PreparedStatement preparedStatement = connection.prepareStatement("update ACCOUNTS set amount = ? where id = ?");
+        preparedStatement.setInt(1, account.getAmount());
+        preparedStatement.setInt(2, account.getId());
+        preparedStatement.executeUpdate();
     }
 }
 

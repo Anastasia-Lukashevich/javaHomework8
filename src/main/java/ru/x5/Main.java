@@ -3,19 +3,14 @@ package ru.x5;
 import ru.x5.exceptions.NotEnoughMoneyException;
 import ru.x5.exceptions.UnknownAccountException;
 
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.PrintWriter;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.Scanner;
 
 public class Main {
-    public static void main(String[] args) throws IOException, UnknownAccountException, NotEnoughMoneyException, SQLException {
-        try (Connection dbConnection = DriverManager.getConnection("jdbc:h2:mem:test;INIT=RUNSCRIPT FROM './schema.sql'\\;RUNSCRIPT FROM './data.sql'")) {
+    public static void main(String[] args) throws UnknownAccountException, NotEnoughMoneyException, SQLException {
+        try (Connection dbConnection = DriverManager.getConnection("jdbc:h2:mem:test;INIT=RUNSCRIPT FROM './schema.sql'\\;RUNSCRIPT FROM './data.sql';DB_CLOSE_DELAY=-1")) {
         }
         Scanner scanner = new Scanner(System.in);
         JdbcAccountService jdbcAccountService = new JdbcAccountService("jdbc:h2:mem:test");
@@ -30,7 +25,5 @@ public class Main {
                 default -> System.out.println("Неверная команда. Если хотите выйти, введите exit.");
             }
         }
-
-
     }
 }
